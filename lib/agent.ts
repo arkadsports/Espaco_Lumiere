@@ -6,6 +6,7 @@ import {
   createAppointment,
   getAppointment,
   getService,
+  listProfessionals,
   listServices,
   slotsForDate,
   upcomingForPhone,
@@ -42,6 +43,7 @@ Regras:
 - Nunca invente preços, durações, horários, datas ou estilos. Consulte as ferramentas. Se o preço for "Sob consulta", diga que o valor é passado pela equipe e siga o agendamento.
 - Para agendar você precisa de: serviço, estilo (quando o serviço tiver opções, como os volumes de cílios), dia e horário, e o nome da cliente. O telefone é o do próprio WhatsApp, não peça.
 - Antes de chamar book_appointment, repita serviço, estilo, dia, hora, local e nome e peça a confirmação da cliente. Só reserve depois do "sim".
+- Cada profissional tem agenda própria. Se houver mais de uma para o serviço e a cliente tiver preferência, use list_professionals e filtre pela profissional; sem preferência, não pergunte.
 - Ofereça no máximo 4 horários por vez. Use o campo "start" exato retornado por check_availability ao reservar.
 - Se book_appointment falhar por conflito, peça desculpas e ofereça outros horários.
 - Dúvidas de saúde (alergias, gravidez, cicatrização, contraindicações), pedidos de desconto, reclamações ou qualquer coisa que você não consiga resolver: use request_human. Não dê orientação médica.
@@ -57,6 +59,11 @@ const tools: Anthropic.Beta.Messages.BetaTool[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "list_professionals",
+    description: "Lista as profissionais ativas, com o que cada uma faz.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "check_availability",
     description:
       "Consulta horários livres de um serviço. Retorna, por dia, o local e os horários (campo start em ISO para usar na reserva).",
@@ -64,6 +71,7 @@ const tools: Anthropic.Beta.Messages.BetaTool[] = [
       type: "object",
       properties: {
         service_id: { type: "string" },
+        professional_id: { type: "string", description: "Só se a cliente pedir uma profissional específica (id de list_professionals)." },
         date_from: { type: "string", description: "YYYY-MM-DD. Padrão: hoje." },
         days: { type: "integer", description: "Quantos dias olhar (1 a 21). Padrão 10." },
       },
@@ -79,6 +87,7 @@ const tools: Anthropic.Beta.Messages.BetaTool[] = [
         service_id: { type: "string" },
         start: { type: "string", description: "Campo start exato retornado por check_availability." },
         variant: { type: "string", description: "Estilo, quando o serviço tiver opções (ex.: 'Volume Glamour')." },
+        professional_id: { type: "string", description: "Mesma profissional usada na consulta de horários, se a cliente escolheu uma." },
         client_name: { type: "string" },
       },
       required: ["service_id", "start", "client_name"],
@@ -122,25 +131,32 @@ async function runTool(name: string, input: Record<string, unknown>, phone: stri
         opcoes: s.variants,
       }));
 
+    case "list_professionals":
+      return (await listProfessionals()).map((p) => ({ id: p.id, nome: p.name, funcao: p.title, atende: p.categories }));
+
     case "check_availability": {
       const service = await getService(str(input.service_id));
       if (!service || !service.active) throw new BookingError("not_found", "Serviço não encontrado.");
       const today = localDate(new Date());
       const from = /^\d{4}-\d{2}-\d{2}$/.test(str(input.date_from)) ? str(input.date_from) : today;
       const days = Math.min(Math.max(Number(input.days) || 10, 1), 21);
-      const range = await availabilityRange(service, from, days);
+      const proId = str(input.professional_id) || null;
+      const range = await availabilityRange(service, from, days, proId);
       const dates = Object.keys(range).sort().slice(0, 4);
       const loc = (id: string) => LOCATIONS.find((l) => l.id === id)?.name ?? id;
       const out = [];
       for (const date of dates) {
-        const slots = await slotsForDate(service, date);
+        const slots = await slotsForDate(service, date, { professionalId: proId });
         // espalha as sugestões ao longo do dia em vez de listar só as primeiras
         const step = Math.max(1, Math.floor(slots.length / 5));
         out.push({
           data: date,
           dia: fmtDateLong(date),
           local: loc(slots[0].location_id),
-          horarios: slots.filter((_, i) => i % step === 0).slice(0, 6).map((s) => ({ hora: s.time, start: s.start })),
+          horarios: slots
+            .filter((_, i) => i % step === 0)
+            .slice(0, 6)
+            .map((s) => ({ hora: s.time, start: s.start, profissionais: s.professionals.map((p) => p.name) })),
         });
       }
       return out.length ? out : { mensagem: "Sem horários livres nesse período." };
@@ -150,6 +166,7 @@ async function runTool(name: string, input: Record<string, unknown>, phone: stri
       const appt = await createAppointment({
         serviceId: str(input.service_id),
         start: str(input.start),
+        professionalId: str(input.professional_id) || null,
         variant: str(input.variant) || null,
         name: str(input.client_name),
         phone,
@@ -160,6 +177,7 @@ async function runTool(name: string, input: Record<string, unknown>, phone: stri
         ok: true,
         servico: appt.service_name,
         estilo: appt.variant,
+        profissional: appt.professional_name,
         dia: fmtDateLong(localDate(start)),
         hora: fmtTime(start),
         local: LOCATIONS.find((l) => l.id === appt.location_id)?.address,

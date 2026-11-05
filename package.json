@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-isolation=none lib/slots.test.ts",
     "db:setup": "node --env-file=.env.local scripts/db-setup.mjs",
-    "test:schema": "node scripts/test-schema.mjs"
+    "test:schema": "node scripts/test-schema.mjs",
+    "test:booking": "node scripts/test-booking.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

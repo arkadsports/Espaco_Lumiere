@@ -14,6 +14,7 @@ export const GET = (req: Request) =>
       service,
       isDateStr(from) ? from : localDate(new Date()),
       Number(p.get("days")) || MAX_DAYS_AHEAD,
+      p.get("professional"),
     );
     return json({ dates });
   });

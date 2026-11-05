@@ -15,9 +15,10 @@ type Service = {
 };
 type Cat = { id: string; name: string };
 type Loc = { id: string; name: string; address: string };
-type Slot = { start: string; time: string; location_id: string };
+type Pro = { id: string; name: string; title: string; categories: string[] };
+type Slot = { start: string; time: string; location_id: string; professionals: { id: string; name: string }[] };
 type Avail = Record<string, { count: number; location_id: string }>;
-type Result = { id: string; service_name: string; variant: string | null; start_at: string; location_id: string; cancel_token: string };
+type Result = { id: string; service_name: string; professional_name: string; variant: string | null; start_at: string; location_id: string; cancel_token: string };
 
 const TZ = "America/Fortaleza";
 const money = (c: number | null) => (c == null ? "Sob consulta" : (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
@@ -39,18 +40,21 @@ export default function BookingFlow({
   services,
   categories,
   locations,
+  professionals,
   initialService,
   initialCategory,
 }: {
   services: Service[];
   categories: Cat[];
   locations: Loc[];
+  professionals: Pro[];
   initialService?: string;
   initialCategory?: string;
 }) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [serviceId, setServiceId] = useState<string | null>(initialService ?? null);
   const [variant, setVariant] = useState<string | null>(null);
+  const [proId, setProId] = useState<string>(""); // vazio = sem preferência
   const [avail, setAvail] = useState<Avail | null>(null);
   const [month, setMonth] = useState<string>(todayStr().slice(0, 7));
   const [date, setDate] = useState<string | null>(null);
@@ -62,13 +66,14 @@ export default function BookingFlow({
   const [result, setResult] = useState<Result | null>(null);
 
   const service = useMemo(() => services.find((s) => s.id === serviceId) ?? null, [services, serviceId]);
+  const candidates = useMemo(() => (service ? professionals.filter((p) => p.categories.includes(service.category)) : []), [service, professionals]);
   const loc = (id: string) => locations.find((l) => l.id === id);
 
-  const loadAvail = useCallback(async (id: string) => {
+  const loadAvail = useCallback(async (id: string, pro: string) => {
     setAvail(null);
     setError("");
     try {
-      const r = await fetch(`/api/availability?service=${id}`);
+      const r = await fetch(`/api/availability?service=${id}${pro ? `&professional=${pro}` : ""}`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setAvail(j.dates);
@@ -80,11 +85,11 @@ export default function BookingFlow({
     }
   }, []);
 
-  const loadSlots = useCallback(async (id: string, d: string) => {
+  const loadSlots = useCallback(async (id: string, d: string, pro: string) => {
     setSlots(null);
     setSlot(null);
     try {
-      const r = await fetch(`/api/slots?service=${id}&date=${d}`);
+      const r = await fetch(`/api/slots?service=${id}&date=${d}${pro ? `&professional=${pro}` : ""}`);
       const j = await r.json();
       setSlots(r.ok ? j.slots : []);
     } catch {
@@ -93,12 +98,13 @@ export default function BookingFlow({
   }, []);
 
   useEffect(() => {
-    if (step === 2 && serviceId && avail === null) void loadAvail(serviceId);
-  }, [step, serviceId, avail, loadAvail]);
+    if (step === 2 && serviceId && avail === null) void loadAvail(serviceId, proId);
+  }, [step, serviceId, proId, avail, loadAvail]);
 
   function pickService(id: string) {
     setServiceId(id);
     setVariant(null);
+    setProId("");
     setAvail(null);
     setDate(null);
     setSlots(null);
@@ -107,7 +113,7 @@ export default function BookingFlow({
 
   function pickDate(d: string) {
     setDate(d);
-    if (serviceId) void loadSlots(serviceId, d);
+    if (serviceId) void loadSlots(serviceId, d, proId);
   }
 
   async function submit(e: React.FormEvent) {
@@ -119,7 +125,7 @@ export default function BookingFlow({
       const r = await fetch("/api/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ service: service.id, start: slot.start, variant, name: form.name, phone: form.phone, notes: form.notes, website: form.website }),
+        body: JSON.stringify({ service: service.id, start: slot.start, variant, professional: proId, name: form.name, phone: form.phone, notes: form.notes, website: form.website }),
       });
       const j = await r.json();
       if (!r.ok) {
@@ -127,8 +133,8 @@ export default function BookingFlow({
         if (r.status === 409 && date) {
           // horário perdido para outra pessoa: volta e recarrega a agenda
           setStep(2);
-          void loadAvail(service.id);
-          void loadSlots(service.id, date);
+          void loadAvail(service.id, proId);
+          void loadSlots(service.id, date, proId);
         }
         return;
       }
@@ -142,7 +148,7 @@ export default function BookingFlow({
   }
 
   const needsVariant = !!service && service.variants.length > 0;
-  const step1Ok = !!service && (!needsVariant || !!variant);
+  const step1Ok = !!service && (!needsVariant || !!variant) && candidates.length > 0;
 
   // ---------- calendário ----------
   const calendar = useMemo(() => {
@@ -173,6 +179,8 @@ export default function BookingFlow({
             <dd>
               {longDate(day)} às {localTime(result.start_at)}
             </dd>
+            <dt>Com</dt>
+            <dd>{result.professional_name}</dd>
             <dt>Onde</dt>
             <dd>{l?.address ?? ""}</dd>
           </dl>
@@ -239,6 +247,25 @@ export default function BookingFlow({
               </div>
             </>
           )}
+          {service && candidates.length === 0 && (
+            <p className="err" role="alert">Ainda não há profissional disponível para este serviço. Fale conosco pelo WhatsApp para agendar.</p>
+          )}
+          {service && candidates.length > 1 && (
+            <>
+              <div className="group-title">Profissional</div>
+              <div className="chips">
+                <button type="button" className={`chip ${proId === "" ? "sel" : ""}`} onClick={() => { setProId(""); setAvail(null); setDate(null); setSlots(null); setSlot(null); }} aria-pressed={proId === ""}>
+                  Sem preferência
+                </button>
+                {candidates.map((p) => (
+                  <button key={p.id} type="button" className={`chip ${proId === p.id ? "sel" : ""}`} onClick={() => { setProId(p.id); setAvail(null); setDate(null); setSlots(null); setSlot(null); }} aria-pressed={proId === p.id}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {service && candidates.length === 1 && <p className="hint" style={{ marginTop: 18 }}>Atendimento com {candidates[0].name}.</p>}
           <div className="nav-row">
             <span />
             <button className="btn btn-gold" disabled={!step1Ok} onClick={() => setStep(2)}>
@@ -354,6 +381,8 @@ export default function BookingFlow({
               <dd>
                 {longDate(date)} às {slot.time}
               </dd>
+              <dt>Com</dt>
+              <dd>{proId ? candidates.find((p) => p.id === proId)?.name : slot.professionals[0]?.name}</dd>
               <dt>Onde</dt>
               <dd>{loc(slot.location_id)?.address}</dd>
               <dt>Valor</dt>

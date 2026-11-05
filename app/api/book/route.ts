@@ -7,6 +7,7 @@ type Payload = {
   service?: string;
   start?: string;
   variant?: string;
+  professional?: string;
   name?: string;
   phone?: string;
   notes?: string;
@@ -20,6 +21,7 @@ export const POST = (req: Request) =>
     const appt = await createAppointment({
       serviceId: String(b.service ?? ""),
       start: String(b.start ?? ""),
+      professionalId: b.professional || null,
       variant: b.variant ?? null,
       name: String(b.name ?? ""),
       phone: String(b.phone ?? ""),

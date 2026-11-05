@@ -11,7 +11,7 @@ Site + agenda online + agente de IA no WhatsApp para o Espaço Lumière (lash de
 | Site (início, serviços, estilos de cílios, tabela de valores, endereços) | `app/page.tsx` |
 | Agenda interativa para clientes | `app/agendar/` |
 | Ver/cancelar um agendamento pelo link | `app/agendamento/[token]/` |
-| Painel da equipe (agenda, horários, datas em Natal, folgas, preços) | `app/admin/` (senha) |
+| Painel da equipe (agenda do dia por profissional, profissionais, horários, datas em Natal, folgas, preços) | `app/admin/` (senha) |
 | Agente de IA no WhatsApp | `app/api/whatsapp/route.ts`, `lib/agent.ts` |
 | Regras de horário sem conflito | `lib/booking.ts`, `lib/slots.ts`, `db/schema.sql` |
 | Serviços, preços, textos e horários iniciais | `lib/content.ts` |
@@ -23,7 +23,7 @@ Site + agenda online + agente de IA no WhatsApp para o Espaço Lumière (lash de
 3. **Garantia final no banco:** uma *exclusion constraint* do Postgres (`appointments_no_overlap`) recusa qualquer reserva que se sobreponha a outra do mesmo profissional. Mesmo com duas pessoas clicando no mesmo instante, só uma vence; a outra recebe "horário acabou de ser reservado".
 4. Site, WhatsApp e agendamento manual do painel usam a mesma função, então compartilham a mesma agenda.
 
-Cada serviço pertence a um `resource` (lash, massagem, piercing, sobrancelha). Serviços do mesmo `resource` nunca se sobrepõem; recursos diferentes podem acontecer ao mesmo tempo. **Se uma única pessoa faz tudo**, troque o `resource` de todos os serviços para o mesmo valor (em `lib/content.ts`, antes do primeiro `db:setup`, ou direto na tabela `services`).
+**Profissionais:** cada profissional tem agenda própria (horários, datas em Natal e folgas) e atende as categorias que você marcar. Dois atendimentos nunca se sobrepõem para a mesma profissional, mas profissionais diferentes atendem ao mesmo tempo. Na agenda online a cliente escolhe a profissional ou "sem preferência" (o sistema usa a primeira livre, na ordem de cadastro). Cadastre-as em `/admin` > Profissionais; elas aparecem na seção "Profissionais" do site. Só a Livia Melo (lash) vem cadastrada; as demais precisam ser criadas, senão massagem, piercing e sobrancelhas ficam sem horários.
 
 ### Dias e locais
 
@@ -65,13 +65,21 @@ Notas:
 - O modelo padrão é `claude-opus-5-5` com esforço baixo (respostas rápidas). Troque com `ANTHROPIC_MODEL`.
 - Respostas livres só podem ser enviadas dentro de 24 h após a última mensagem da cliente. Lembretes proativos (ex.: "amanhã é seu horário") exigem *templates* aprovados pela Meta e ainda não estão implementados.
 
-## Imagens dos cílios
+## Imagens
 
-Coloque as fotos em `public/images/` com estes nomes (proporção 3:4 funciona melhor):
+Fotos em `public/images/` (nomes fixos):
 
-`lash-brasileiro.jpg` · `lash-egipcio.jpg` · `lash-glamour.jpg` · `lash-luxo.jpg`
+| Arquivo | Uso | Origem |
+|---|---|---|
+| `lash-brasileiro.jpg` | Volume Brasileiro | [Pexels 9409695](https://www.pexels.com/photo/9409695/) |
+| `lash-egipcio.jpg` | Volume Egípcio | [Pexels 3657418](https://www.pexels.com/photo/3657418/) |
+| `lash-glamour.jpg` | Volume Glamour | [Pexels 32039798](https://www.pexels.com/photo/32039798/) |
+| `lash-luxo.jpg` | Volume Luxo | [Pexels 21412169](https://www.pexels.com/photo/21412169/) |
+| `manutencao.jpg` | Seção Manutenção | [Pexels 8554941](https://www.pexels.com/photo/8554941/) |
 
-Enquanto não existirem, o site mostra o quadro "Sua foto aqui", como na arte de referência.
+São fotos de banco de imagens gratuito (licença Pexels: uso comercial permitido, sem atribuição obrigatória). **São ilustrativas**, não trabalhos do espaço, e só a do Luxo mostra extensão profissional de fato. Troque pelas fotos reais da Livia mantendo os mesmos nomes de arquivo (proporção 3:4). A legenda "Imagem ilustrativa" fica em `app/page.tsx`; remova quando usar fotos próprias.
+
+Fotos das profissionais: coloque em `public/profissionais/` e informe o caminho (ex.: `/profissionais/ana.jpg`) em `/admin` > Profissionais.
 
 ## Desenvolvimento
 
@@ -83,5 +91,7 @@ npm run typecheck
 ```
 
 Sem `DATABASE_URL`, a página inicial funciona com o conteúdo padrão, mas agenda e painel precisam do banco.
+
+`npm run test:booking` testa as regras reais de agendamento (profissionais, escolha, Natal, folgas, reservas simultâneas) num Postgres em memória.
 
 `npm run test:schema` roda o schema num Postgres em memória e comprova que o banco recusa horários sobrepostos (inclui teste com 3 reservas simultâneas).

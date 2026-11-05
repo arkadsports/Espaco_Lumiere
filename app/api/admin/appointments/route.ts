@@ -1,4 +1,4 @@
-import { BookingError, cancelAppointment, createAppointment, getAppointment, type Appointment } from "@/lib/booking";
+import { APPT_SELECT, BookingError, cancelAppointment, createAppointment, getAppointment, type Appointment } from "@/lib/booking";
 import { query } from "@/lib/db";
 import { adminOnly, body, json } from "@/lib/http";
 import { addDays, atLocal, isDateStr, localDate } from "@/lib/time";
@@ -11,9 +11,7 @@ export const GET = (req: Request) =>
     const from = isDateStr(p.get("from")) ? p.get("from")! : localDate(new Date());
     const to = isDateStr(p.get("to")) ? p.get("to")! : from;
     const rows = await query<Appointment>(
-      `select a.id, a.service_id, s.name as service_name, a.location_id, a.start_at, a.end_at, a.variant,
-              a.client_name, a.client_phone, a.notes, a.status, a.source, a.cancel_token
-         from appointments a join services s on s.id = a.service_id
+      `${APPT_SELECT}
         where a.start_at >= $1 and a.start_at < $2
         order by a.start_at`,
       [atLocal(from, "00:00").toISOString(), atLocal(addDays(to, 1), "00:00").toISOString()],
@@ -23,10 +21,11 @@ export const GET = (req: Request) =>
 
 export const POST = (req: Request) =>
   adminOnly(async () => {
-    const b = await body<{ service?: string; start?: string; variant?: string; name?: string; phone?: string; notes?: string }>(req);
+    const b = await body<{ service?: string; professional?: string; start?: string; variant?: string; name?: string; phone?: string; notes?: string }>(req);
     const appt = await createAppointment({
       serviceId: String(b.service ?? ""),
       start: String(b.start ?? ""),
+      professionalId: b.professional || null,
       variant: b.variant ?? null,
       name: String(b.name ?? ""),
       phone: String(b.phone ?? ""),

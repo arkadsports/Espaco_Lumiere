@@ -13,5 +13,5 @@ export const GET = (req: Request) =>
     const date = p.get("date");
     if (!isDateStr(date)) throw new BookingError("invalid", "Data inválida.");
     const ignoreLead = p.get("admin") === "1" && (await isAdmin());
-    return json({ slots: await slotsForDate(service, date, { ignoreLead }) });
+    return json({ slots: await slotsForDate(service, date, { ignoreLead, professionalId: p.get("professional") }) });
   });

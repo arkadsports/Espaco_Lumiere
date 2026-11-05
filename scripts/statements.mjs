@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { SERVICES, LOCATIONS, DEFAULT_WINDOWS } from "../lib/content.ts";
+import { SERVICES, LOCATIONS, DEFAULT_WINDOWS, PROFESSIONALS } from "../lib/content.ts";
 
 const schema = readFileSync(new URL("../db/schema.sql", import.meta.url), "utf8");
 
@@ -21,16 +21,23 @@ export function seedStatements({ withWindows }) {
   }
   for (const s of SERVICES) {
     out.push({
-      text: `insert into services (id, category, name, description, duration_min, price_cents, variants, variant_label, resource, sort)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict (id) do nothing`,
-      params: [s.id, s.category, s.name, s.description, s.duration_min, s.price_cents, s.variants, s.variant_label, s.resource, s.sort],
+      text: `insert into services (id, category, name, description, duration_min, price_cents, variants, variant_label, sort)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (id) do nothing`,
+      params: [s.id, s.category, s.name, s.description, s.duration_min, s.price_cents, s.variants, s.variant_label, s.sort],
+    });
+  }
+  for (const p of PROFESSIONALS) {
+    out.push({
+      text: `insert into professionals (id, name, title, bio, photo_url, categories, sort)
+             values ($1,$2,$3,$4,$5,$6,$7) on conflict (id) do nothing`,
+      params: [p.id, p.name, p.title, p.bio, p.photo_url, p.categories, p.sort],
     });
   }
   if (withWindows) {
     for (const w of DEFAULT_WINDOWS) {
       out.push({
-        text: `insert into schedule_windows (location_id, weekday, start_time, end_time) values ($1,$2,$3,$4)`,
-        params: [w.location_id, w.weekday, w.start_time, w.end_time],
+        text: `insert into schedule_windows (professional_id, location_id, weekday, start_time, end_time) values ($1,$2,$3,$4,$5)`,
+        params: [w.professional_id, w.location_id, w.weekday, w.start_time, w.end_time],
       });
     }
   }

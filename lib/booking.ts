@@ -1,5 +1,5 @@
 import { query } from "./db";
-import { generateSlots, type Busy, type Slot, type Win } from "./slots";
+import { generateSlots, type Busy } from "./slots";
 import { addDays, atLocal, isDateStr, localDate, weekday } from "./time";
 
 export const STEP_MIN = Number(process.env.SLOT_STEP_MIN || 30);
@@ -17,8 +17,26 @@ export type Service = {
   price_cents: number | null;
   variants: string[];
   variant_label: string | null;
-  resource: string;
   active: boolean;
+};
+
+export type Professional = {
+  id: string;
+  name: string;
+  title: string;
+  bio: string;
+  photo_url: string | null;
+  categories: string[];
+  active: boolean;
+  sort: number;
+};
+
+/** Horário livre de um serviço: quais profissionais podem atender e onde. */
+export type PSlot = {
+  start: string;
+  time: string;
+  location_id: string;
+  professionals: { id: string; name: string; location_id: string }[];
 };
 
 export class BookingError extends Error {
@@ -29,85 +47,120 @@ export class BookingError extends Error {
   }
 }
 
+const SERVICE_COLS = `id, category, name, description, duration_min, price_cents, variants, variant_label, active`;
+
 export async function listServices(includeInactive = false): Promise<Service[]> {
-  return query<Service>(
-    `select id, category, name, description, duration_min, price_cents, variants, variant_label, resource, active
-       from services ${includeInactive ? "" : "where active"} order by sort, name`,
-  );
+  return query<Service>(`select ${SERVICE_COLS} from services ${includeInactive ? "" : "where active"} order by sort, name`);
 }
 
 export async function getService(id: string): Promise<Service | null> {
-  const rows = await query<Service>(
-    `select id, category, name, description, duration_min, price_cents, variants, variant_label, resource, active
-       from services where id = $1`,
-    [id],
-  );
+  const rows = await query<Service>(`select ${SERVICE_COLS} from services where id = $1`, [id]);
   return rows[0] ?? null;
 }
 
-type WinRow = Win & { weekday: number | null; on_date: string | null };
-type Ctx = { weekly: WinRow[]; dated: WinRow[]; blocked: Set<string>; busy: Busy[] };
+export async function listProfessionals(opts: { includeInactive?: boolean; category?: string } = {}): Promise<Professional[]> {
+  return query<Professional>(
+    `select id, name, title, bio, photo_url, categories, active, sort from professionals
+      where ($1::boolean or active) and ($2::text is null or $2 = any(categories))
+      order by sort, name`,
+    [!!opts.includeInactive, opts.category ?? null],
+  );
+}
 
-async function loadCtx(from: string, to: string, resource: string): Promise<Ctx> {
+// ---------- disponibilidade ----------
+
+type WinRow = { professional_id: string; location_id: string; weekday: number | null; on_date: string | null; start_time: string; end_time: string; categories: string[] | null };
+type BlockRow = { on_date: string; professional_id: string | null };
+type Ctx = {
+  pros: Professional[];
+  weekly: WinRow[];
+  dated: WinRow[];
+  blocked: BlockRow[];
+  busy: (Busy & { professional_id: string })[];
+};
+
+async function loadCtx(from: string, to: string, pros: Professional[]): Promise<Ctx> {
+  if (pros.length === 0) return { pros, weekly: [], dated: [], blocked: [], busy: [] };
+  const ids = pros.map((p) => p.id);
   const [weekly, dated, blocked, busy] = await Promise.all([
     query<WinRow>(
-      `select location_id, weekday, null::text as on_date, start_time::text, end_time::text, categories
-         from schedule_windows where weekday is not null`,
+      `select professional_id, location_id, weekday, null::text as on_date, start_time::text, end_time::text, categories
+         from schedule_windows where weekday is not null and professional_id = any($1)`,
+      [ids],
     ),
     query<WinRow>(
-      `select location_id, null::int as weekday, on_date::text, start_time::text, end_time::text, categories
-         from schedule_windows where on_date between $1 and $2`,
-      [from, to],
+      `select professional_id, location_id, null::int as weekday, on_date::text, start_time::text, end_time::text, categories
+         from schedule_windows where on_date between $2 and $3 and professional_id = any($1)`,
+      [ids, from, to],
     ),
-    query<{ on_date: string }>(`select on_date::text from blocked_dates where on_date between $1 and $2`, [from, to]),
-    query<{ start_at: string; end_at: string }>(
-      `select start_at, end_at from appointments
-        where resource = $1 and status <> 'cancelled' and start_at < $3 and end_at > $2`,
-      [resource, atLocal(from, "00:00").toISOString(), atLocal(addDays(to, 1), "00:00").toISOString()],
+    query<BlockRow>(`select on_date::text, professional_id from blocked_dates where on_date between $1 and $2`, [from, to]),
+    query<{ professional_id: string; start_at: string; end_at: string }>(
+      `select professional_id, start_at, end_at from appointments
+        where professional_id = any($1) and status <> 'cancelled' and start_at < $3 and end_at > $2`,
+      [ids, atLocal(from, "00:00").toISOString(), atLocal(addDays(to, 1), "00:00").toISOString()],
     ),
   ]);
   return {
+    pros,
     weekly,
     dated,
-    blocked: new Set(blocked.map((b) => b.on_date)),
-    busy: busy.map((b) => ({ start: new Date(b.start_at), end: new Date(b.end_at) })),
+    blocked,
+    busy: busy.map((b) => ({ professional_id: b.professional_id, start: new Date(b.start_at), end: new Date(b.end_at) })),
   };
 }
 
-/** Datas específicas (ex.: dias em Natal) substituem completamente o horário semanal daquele dia. */
-function windowsFor(ctx: Ctx, date: string): Win[] {
-  if (ctx.blocked.has(date)) return [];
-  const dated = ctx.dated.filter((w) => w.on_date === date);
+/**
+ * Janelas de atendimento de uma profissional em uma data.
+ * Datas específicas (ex.: dias em Natal) substituem o horário semanal daquele dia.
+ * Folga geral (professional_id nulo) ou da própria profissional bloqueia o dia.
+ */
+function windowsFor(ctx: Ctx, date: string, proId: string) {
+  if (ctx.blocked.some((b) => b.on_date === date && (b.professional_id === null || b.professional_id === proId))) return [];
+  const dated = ctx.dated.filter((w) => w.professional_id === proId && w.on_date === date);
   if (dated.length > 0) return dated;
-  return ctx.weekly.filter((w) => w.weekday === weekday(date));
+  return ctx.weekly.filter((w) => w.professional_id === proId && w.weekday === weekday(date));
 }
 
-function slotsFor(ctx: Ctx, service: Service, date: string, now: Date, minLeadMin: number): Slot[] {
-  return generateSlots({
-    date,
-    windows: windowsFor(ctx, date),
-    category: service.category,
-    durationMin: service.duration_min,
-    stepMin: STEP_MIN,
-    busy: ctx.busy,
-    now,
-    minLeadMin,
-  });
+function slotsFor(ctx: Ctx, service: Service, date: string, now: Date, minLeadMin: number): PSlot[] {
+  const out = new Map<string, PSlot>();
+  for (const pro of ctx.pros) {
+    const slots = generateSlots({
+      date,
+      windows: windowsFor(ctx, date, pro.id),
+      category: service.category,
+      durationMin: service.duration_min,
+      stepMin: STEP_MIN,
+      busy: ctx.busy.filter((b) => b.professional_id === pro.id),
+      now,
+      minLeadMin,
+    });
+    for (const s of slots) {
+      const e = out.get(s.start) ?? { start: s.start, time: s.time, location_id: s.location_id, professionals: [] };
+      e.professionals.push({ id: pro.id, name: pro.name, location_id: s.location_id });
+      out.set(s.start, e);
+    }
+  }
+  return [...out.values()].sort((a, b) => a.start.localeCompare(b.start));
 }
 
-export async function slotsForDate(service: Service, date: string, opts: { ignoreLead?: boolean } = {}) {
+async function candidates(service: Service, professionalId?: string | null) {
+  const pros = await listProfessionals({ category: service.category });
+  return professionalId ? pros.filter((p) => p.id === professionalId) : pros;
+}
+
+export async function slotsForDate(service: Service, date: string, opts: { ignoreLead?: boolean; professionalId?: string | null } = {}) {
   if (!isDateStr(date)) throw new BookingError("invalid", "Data inválida.");
-  const ctx = await loadCtx(date, date, service.resource);
+  const ctx = await loadCtx(date, date, await candidates(service, opts.professionalId));
   return slotsFor(ctx, service, date, new Date(), opts.ignoreLead ? -24 * 60 : MIN_LEAD_MIN);
 }
 
 /** Resumo por dia, para pintar o calendário. */
-export async function availabilityRange(service: Service, from: string, days: number) {
+export async function availabilityRange(service: Service, from: string, days: number, professionalId?: string | null) {
   const today = localDate(new Date());
   const start = from < today ? today : from;
   const span = Math.min(Math.max(days, 1), MAX_DAYS_AHEAD + 1);
   const end = addDays(start, span - 1);
-  const ctx = await loadCtx(start, end, service.resource);
+  const ctx = await loadCtx(start, end, await candidates(service, professionalId));
   const now = new Date();
   const out: Record<string, { count: number; location_id: string }> = {};
   for (let i = 0; i < span; i++) {
@@ -117,6 +170,22 @@ export async function availabilityRange(service: Service, from: string, days: nu
   }
   return out;
 }
+
+/** Visão do dia para o painel: expediente de cada profissional ativa. */
+export async function dayPlan(date: string) {
+  if (!isDateStr(date)) throw new BookingError("invalid", "Data inválida.");
+  const pros = await listProfessionals();
+  const ctx = await loadCtx(date, date, pros);
+  return pros.map((p) => ({
+    id: p.id,
+    name: p.name,
+    title: p.title,
+    off: ctx.blocked.some((b) => b.on_date === date && (b.professional_id === null || b.professional_id === p.id)),
+    windows: windowsFor(ctx, date, p.id).map((w) => ({ location_id: w.location_id, start_time: w.start_time.slice(0, 5), end_time: w.end_time.slice(0, 5) })),
+  }));
+}
+
+// ---------- agendamentos ----------
 
 export function normalizePhone(raw: string): string {
   let d = raw.replace(/\D/g, "");
@@ -130,6 +199,8 @@ export type Appointment = {
   id: string;
   service_id: string;
   service_name: string;
+  professional_id: string;
+  professional_name: string;
   location_id: string;
   start_at: string;
   end_at: string;
@@ -142,13 +213,14 @@ export type Appointment = {
   cancel_token: string;
 };
 
-const APPT_SELECT = `select a.id, a.service_id, s.name as service_name, a.location_id, a.start_at, a.end_at, a.variant,
-  a.client_name, a.client_phone, a.notes, a.status, a.source, a.cancel_token
-  from appointments a join services s on s.id = a.service_id`;
+export const APPT_SELECT = `select a.id, a.service_id, s.name as service_name, a.professional_id, p.name as professional_name,
+  a.location_id, a.start_at, a.end_at, a.variant, a.client_name, a.client_phone, a.notes, a.status, a.source, a.cancel_token
+  from appointments a join services s on s.id = a.service_id join professionals p on p.id = a.professional_id`;
 
 export async function createAppointment(input: {
   serviceId: string;
   start: string;
+  professionalId?: string | null;
   variant?: string | null;
   name: string;
   phone: string;
@@ -173,11 +245,11 @@ export async function createAppointment(input: {
   const startDate = new Date(input.start);
   if (Number.isNaN(startDate.getTime())) throw new BookingError("invalid", "Horário inválido.");
   const date = localDate(startDate);
-  const ignoreLead = input.source === "admin";
 
-  const slots = await slotsForDate(service, date, { ignoreLead });
+  const slots = await slotsForDate(service, date, { ignoreLead: input.source === "admin", professionalId: input.professionalId });
   const slot = slots.find((s) => s.start === startDate.toISOString());
   if (!slot) throw new BookingError("unavailable", "Esse horário não está mais disponível. Escolha outro.");
+  const chosen = slot.professionals[0]; // sem preferência: a primeira profissional livre, na ordem do cadastro
 
   if (input.source !== "admin") {
     const [{ n }] = await query<{ n: number }>(
@@ -192,13 +264,13 @@ export async function createAppointment(input: {
   const end = new Date(startDate.getTime() + service.duration_min * 60_000);
   try {
     const rows = await query<{ id: string }>(
-      `insert into appointments (service_id, resource, location_id, start_at, end_at, variant, client_name, client_phone, notes, source)
+      `insert into appointments (service_id, professional_id, location_id, start_at, end_at, variant, client_name, client_phone, notes, source)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
-      [service.id, service.resource, slot.location_id, startDate.toISOString(), end.toISOString(), variant, name, phone, input.notes?.slice(0, 300) ?? null, input.source],
+      [service.id, chosen.id, chosen.location_id, startDate.toISOString(), end.toISOString(), variant, name, phone, input.notes?.slice(0, 300) ?? null, input.source],
     );
     return (await getAppointment(rows[0].id))!;
   } catch (e) {
-    // 23P01 = violação da exclusion constraint: alguém reservou no mesmo instante.
+    // 23P01 = violação da exclusion constraint: alguém reservou a mesma profissional no mesmo instante.
     if ((e as { code?: string }).code === "23P01") {
       throw new BookingError("conflict", "Esse horário acabou de ser reservado. Escolha outro.");
     }
@@ -207,6 +279,7 @@ export async function createAppointment(input: {
 }
 
 export async function getAppointment(id: string): Promise<Appointment | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const rows = await query<Appointment>(`${APPT_SELECT} where a.id = $1`, [id]);
   return rows[0] ?? null;
 }

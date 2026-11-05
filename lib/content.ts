@@ -48,7 +48,6 @@ export type ServiceSeed = {
   price_cents: number | null;
   variants: string[];
   variant_label: string | null;
-  resource: string;
   sort: number;
 };
 
@@ -64,7 +63,6 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: 15000,
     variants: lashVariants,
     variant_label: "Estilo",
-    resource: "lash",
     sort: 10,
   },
   {
@@ -76,7 +74,6 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: 10000,
     variants: lashVariants,
     variant_label: "Estilo",
-    resource: "lash",
     sort: 20,
   },
   {
@@ -88,7 +85,6 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: 3000,
     variants: [],
     variant_label: null,
-    resource: "lash",
     sort: 30,
   },
   {
@@ -100,7 +96,6 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: null,
     variants: [],
     variant_label: null,
-    resource: "massagem",
     sort: 40,
   },
   {
@@ -112,7 +107,6 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: null,
     variants: [],
     variant_label: null,
-    resource: "piercing",
     sort: 50,
   },
   {
@@ -124,15 +118,39 @@ export const SERVICES: ServiceSeed[] = [
     price_cents: null,
     variants: [],
     variant_label: null,
-    resource: "sobrancelha",
     sort: 60,
   },
 ];
 
-// Horário semanal inicial de Angicos (terça a sábado). Ajuste no painel /admin.
-export const DEFAULT_WINDOWS = [2, 3, 4, 5, 6].flatMap((weekday) => [
-  { location_id: "angicos", weekday, start_time: "09:00", end_time: "12:00" },
-  { location_id: "angicos", weekday, start_time: "14:00", end_time: "18:00" },
-]);
+export type ProfessionalSeed = {
+  id: string;
+  name: string;
+  title: string;
+  bio: string;
+  photo_url: string | null;
+  categories: string[];
+  sort: number;
+};
+
+// Cadastre as demais profissionais (massagem, piercing, sobrancelhas) no painel /admin > Profissionais.
+export const PROFESSIONALS: ProfessionalSeed[] = [
+  {
+    id: "livia-melo",
+    name: "Livia Melo",
+    title: "Lash designer",
+    bio: "Especialista em extensão de cílios, com atenção ao olhar de cada cliente.",
+    photo_url: null,
+    categories: ["lash"],
+    sort: 10,
+  },
+];
+
+// Horário semanal inicial (terça a sábado, em Angicos). Ajuste no painel /admin.
+export const DEFAULT_WINDOWS = PROFESSIONALS.flatMap((p) =>
+  [2, 3, 4, 5, 6].flatMap((weekday) => [
+    { professional_id: p.id, location_id: "angicos", weekday, start_time: "09:00", end_time: "12:00" },
+    { professional_id: p.id, location_id: "angicos", weekday, start_time: "14:00", end_time: "18:00" },
+  ]),
+);
 
 export const WEEKDAYS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];

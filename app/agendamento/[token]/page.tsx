@@ -43,6 +43,8 @@ export default async function Page({ params }: { params: Promise<{ token: string
                       {appt.service_name}
                       {appt.variant ? ` · ${appt.variant}` : ""}
                     </dd>
+                    <dt>Com</dt>
+                    <dd>{appt.professional_name}</dd>
                     <dt>Quando</dt>
                     <dd>
                       {fmtDateLong(localDate(start))} às {fmtTime(start)}

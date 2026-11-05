@@ -7,6 +7,17 @@ create table if not exists locations (
   maps_url text
 );
 
+create table if not exists professionals (
+  id text primary key,
+  name text not null,
+  title text not null default '',
+  bio text not null default '',
+  photo_url text,
+  categories text[] not null default '{}',
+  active boolean not null default true,
+  sort int not null default 0
+);
+
 create table if not exists services (
   id text primary key,
   category text not null,
@@ -16,13 +27,13 @@ create table if not exists services (
   price_cents int,
   variants text[] not null default '{}',
   variant_label text,
-  resource text not null,
   sort int not null default 0,
   active boolean not null default true
 );
 
 create table if not exists schedule_windows (
   id serial primary key,
+  professional_id text not null references professionals(id) on delete cascade,
   location_id text not null references locations(id),
   weekday int check (weekday between 0 and 6),
   on_date date,
@@ -34,14 +45,18 @@ create table if not exists schedule_windows (
 );
 
 create table if not exists blocked_dates (
-  on_date date primary key,
+  id serial primary key,
+  on_date date not null,
+  professional_id text references professionals(id) on delete cascade,
   reason text
 );
+
+create unique index if not exists blocked_dates_unique on blocked_dates (on_date, coalesce(professional_id, ''));
 
 create table if not exists appointments (
   id uuid primary key default gen_random_uuid(),
   service_id text not null references services(id),
-  resource text not null,
+  professional_id text not null references professionals(id),
   location_id text not null references locations(id),
   start_at timestamptz not null,
   end_at timestamptz not null,
@@ -55,7 +70,7 @@ create table if not exists appointments (
   created_at timestamptz not null default now(),
   check (end_at > start_at),
   constraint appointments_no_overlap exclude using gist (
-    resource with =,
+    professional_id with =,
     tstzrange(start_at, end_at) with &&
   ) where (status <> 'cancelled')
 );

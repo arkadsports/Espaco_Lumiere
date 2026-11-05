@@ -59,7 +59,6 @@ h2 { font-size: clamp(2rem, 4.5vw, 3rem); }
 .logo small { display: block; font-family: var(--sans); font-size: 0.55rem; letter-spacing: 0.4em; text-transform: uppercase; color: var(--muted); margin-top: -4px; }
 .nav { display: flex; align-items: center; gap: 28px; font-size: 0.78rem; letter-spacing: 0.2em; text-transform: uppercase; }
 .nav a:not(.btn):hover { color: var(--gold-1); }
-@media (max-width: 760px) { .nav a:not(.btn) { display: none; } }
 
 /* hero */
 .hero { position: relative; text-align: center; padding: clamp(70px, 12vw, 140px) 0 clamp(60px, 9vw, 100px); overflow: hidden; }
@@ -226,3 +225,84 @@ section.alt { background: linear-gradient(180deg, var(--cream-2), var(--cream));
 .table input[type="number"], .table input[type="text"] { width: 100px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--brown-d); color: #fff; padding: 12px 22px; border-radius: 999px; z-index: 50; font-size: 0.9rem; }
 .login { max-width: 380px; margin: 90px auto; }
+
+/* ---------- marca, menu ---------- */
+:root { --logo-gold: #bd920f; }
+.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--logo-gold); }
+.brand-text { display: flex; flex-direction: column; line-height: 1; font-family: Georgia, "Times New Roman", serif; text-transform: uppercase; }
+.brand-text small { font-size: 0.62rem; letter-spacing: 0.32em; margin-bottom: 3px; padding-left: 2px; }
+.brand-text span { font-size: 1.45rem; letter-spacing: 0.06em; }
+.gold { color: var(--logo-gold); }
+.site-footer .gold { margin: 0 auto 6px; }
+
+.nav { display: none; gap: 22px; }
+.header-mobile { display: flex; align-items: center; gap: 10px; }
+@media (min-width: 1040px) {
+  .nav { display: flex; }
+  .header-mobile { display: none; }
+}
+.burger { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.5); cursor: pointer; display: grid; place-content: center; gap: 5px; padding: 0; }
+.burger span { display: block; width: 20px; height: 2px; background: var(--brown); transition: transform 0.2s, opacity 0.2s; }
+.burger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.burger.open span:nth-child(2) { opacity: 0; }
+.burger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+.menu-backdrop { position: fixed; inset: 68px 0 0; background: rgba(60, 38, 18, 0.35); z-index: 18; }
+.menu-panel { position: fixed; top: 68px; left: 0; right: 0; z-index: 19; background: var(--cream); border-bottom: 1px solid var(--line); padding: 8px 24px 26px; display: flex; flex-direction: column; box-shadow: 0 24px 40px -20px rgba(60, 38, 18, 0.5); }
+.menu-panel[hidden] { display: none; }
+.menu-panel a:not(.btn) { padding: 15px 4px; border-bottom: 1px solid var(--line); font-size: 0.82rem; letter-spacing: 0.26em; text-transform: uppercase; }
+.menu-panel .btn { margin-top: 20px; }
+
+.hero .lotus { color: var(--logo-gold); margin: 0 auto 18px; }
+
+/* ---------- profissionais ---------- */
+.pros { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; max-width: 900px; margin-inline: auto; }
+.pro { text-align: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 30px 24px; background: rgba(255, 255, 255, 0.4); }
+.pro .avatar { width: 128px; height: 128px; border-radius: 50%; margin: 0 auto 18px; border: 1px solid var(--gold-2); background: linear-gradient(160deg, var(--sand), var(--cream-2)) center / cover; display: grid; place-items: center; color: var(--logo-gold); }
+.pro h3 { font-size: 1.8rem; }
+.pro .role { font-size: 0.72rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); margin: 6px 0 12px; }
+.pro p { margin: 0 0 16px; font-size: 0.95rem; color: var(--brown-d); }
+.pro .tags { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+.pro .tags span { font-size: 0.68rem; letter-spacing: 0.15em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; background: var(--sand); }
+
+/* ---------- manutenção ---------- */
+.maint { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 5vw, 56px); align-items: center; }
+.maint .shot { aspect-ratio: 4 / 3; border-radius: 22px; background: var(--sand) center / cover; border: 1px solid var(--line); }
+.maint h2 { margin: 8px 0 14px; }
+.maint ul { padding-left: 18px; margin: 16px 0 24px; }
+.maint li { margin-bottom: 6px; }
+.maint .from { font-family: var(--serif); font-size: 1.6rem; color: var(--brown); }
+@media (max-width: 800px) { .maint { grid-template-columns: 1fr; } }
+
+.photo .cap { position: absolute; left: 8px; bottom: 8px; z-index: 2; font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; background: rgba(255, 255, 255, 0.78); color: var(--muted); padding: 2px 8px; border-radius: 999px; }
+
+/* ---------- contato ---------- */
+.contact { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.contact a.card, .contact .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; background: rgba(255, 255, 255, 0.4); display: flex; flex-direction: column; gap: 4px; }
+.contact a.card:hover { border-color: var(--gold-1); }
+.contact .card .eyebrow { font-size: 0.68rem; }
+.contact .card strong { font-family: var(--serif); font-weight: 400; font-size: 1.5rem; color: var(--brown); }
+
+/* ---------- booking: escolha de profissional ---------- */
+.chip small { opacity: 0.7; }
+
+/* ---------- admin: visão do dia ---------- */
+.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 14px 0 4px; }
+.week button { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.6); border-radius: 12px; padding: 8px 2px; cursor: pointer; text-align: center; line-height: 1.25; }
+.week button.sel { background: var(--brown); color: #fff; border-color: var(--brown); }
+.week button b { display: block; font-size: 1.2rem; font-family: var(--serif); font-weight: 500; }
+.week button small { font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.week button i { font-style: normal; font-size: 0.72rem; display: block; opacity: 0.8; }
+.grid-day { display: grid; grid-auto-rows: 28px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; margin-top: 14px; font-size: 0.82rem; }
+.grid-day .hd { background: var(--cream-2); padding: 8px 6px; text-align: center; font-weight: 500; grid-row: 1; border-left: 1px solid var(--line); }
+.grid-day .hour { grid-column: 1; color: var(--muted); font-size: 0.7rem; padding: 2px 6px; border-top: 1px solid var(--line); }
+.grid-day .cell { border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: repeating-linear-gradient(135deg, #f1ebe3, #f1ebe3 6px, #f7f2ec 6px, #f7f2ec 12px); }
+.grid-day .cell.open { background: #fbf8f3; }
+.grid-day .appt { margin: 2px 3px; border-radius: 8px; padding: 3px 7px; background: #e9d6a8; border-left: 3px solid var(--logo-gold); overflow: hidden; line-height: 1.25; z-index: 1; }
+.grid-day .appt.completed { background: #cfe3d2; border-color: var(--ok); }
+.grid-day .appt.no_show { background: #ecc8c1; border-color: var(--err); }
+.grid-day .appt.cancelled { display: none; }
+.grid-day .appt b { font-weight: 500; }
+.legend-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); margin-top: 10px; }
+.legend-row i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
+.pro-form { display: grid; gap: 12px; }
+.pro-card { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: space-between; }

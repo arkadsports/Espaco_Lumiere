@@ -1,30 +1,34 @@
 import Link from "next/link";
-import { CATEGORIES, LASH_STYLES, LOCATIONS, SERVICES, SITE } from "@/lib/content";
+import { CATEGORIES, LASH_STYLES, LOCATIONS, PROFESSIONALS, SERVICES, SITE } from "@/lib/content";
 import { query } from "@/lib/db";
 import { fmtDateShort, fmtMoney, localDate } from "@/lib/time";
 import { Footer, Header, WhatsAppFloat, waLink } from "./_components/Chrome";
+import Lotus from "./_components/Lotus";
 
 export const revalidate = 60;
 
 type Price = { id: string; category: string; name: string; duration_min: number; price_cents: number | null };
+type Pro = { id: string; name: string; title: string; bio: string; photo_url: string | null; categories: string[] };
 
 async function loadData() {
   // Se o banco ainda não estiver configurado, o site continua no ar com o conteúdo padrão.
   try {
-    const [services, natal] = await Promise.all([
+    const [services, natal, pros] = await Promise.all([
       query<Price>(`select id, category, name, duration_min, price_cents from services where active order by sort`),
       query<{ on_date: string }>(
         `select distinct on_date::text as on_date from schedule_windows where location_id = 'natal' and on_date >= $1 order by on_date limit 12`,
         [localDate(new Date())],
       ),
+      query<Pro>(`select id, name, title, bio, photo_url, categories from professionals where active order by sort, name`),
     ]);
-    return { services, natalDates: natal.map((n) => n.on_date) };
+    return { services, natalDates: natal.map((n) => n.on_date), pros };
   } catch {
-    return { services: SERVICES as Price[], natalDates: [] as string[] };
+    return { services: SERVICES as Price[], natalDates: [] as string[], pros: PROFESSIONALS as Pro[] };
   }
 }
 
 const DURATION = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, "0") : ""}` : `${m} min`);
+const catName = (id: string) => CATEGORIES.find((c) => c.id === id)?.name ?? id;
 
 function Pill({ cents }: { cents: number | null }) {
   if (cents == null) return <div className="pill" style={{ fontSize: "1.2rem" }}>Sob consulta</div>;
@@ -38,9 +42,10 @@ function Pill({ cents }: { cents: number | null }) {
 }
 
 export default async function Home() {
-  const { services, natalDates } = await loadData();
+  const { services, natalDates, pros } = await loadData();
   const lash = ["lash-aplicacao", "lash-manutencao", "lash-remocao"].map((id) => services.find((s) => s.id === id)).filter(Boolean) as Price[];
   const others = services.filter((s) => s.category !== "lash");
+  const maint = services.find((s) => s.id === "lash-manutencao");
 
   return (
     <>
@@ -48,6 +53,7 @@ export default async function Home() {
       <main>
         <section className="hero">
           <div className="wrap">
+            <Lotus size={78} className="lotus" />
             <div className="eyebrow">Angicos · Natal</div>
             <h1>Espaço Lumière</h1>
             <div className="sub">Estética feminina</div>
@@ -86,7 +92,37 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="block" id="cilios">
+        <section className="block" id="profissionais">
+          <div className="wrap">
+            <div className="section-head">
+              <div className="eyebrow">Profissionais</div>
+              <h2>Quem cuida de você</h2>
+              <p>Cada profissional tem agenda própria. No agendamento você pode escolher com quem prefere ser atendida.</p>
+            </div>
+            <div className="pros">
+              {pros.map((p) => (
+                <article className="pro" key={p.id}>
+                  <div className="avatar" style={p.photo_url ? { backgroundImage: `url(${p.photo_url})` } : undefined} role="img" aria-label={p.name}>
+                    {!p.photo_url && <Lotus size={44} />}
+                  </div>
+                  <h3>{p.name}</h3>
+                  {p.title && <div className="role">{p.title}</div>}
+                  {p.bio && <p>{p.bio}</p>}
+                  <div className="tags">
+                    {p.categories.map((c) => (
+                      <span key={c}>{catName(c)}</span>
+                    ))}
+                  </div>
+                  <Link href="/agendar" className="btn btn-ghost btn-sm">
+                    Agendar
+                  </Link>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="block alt" id="cilios">
           <div className="wrap">
             <div className="section-head">
               <div className="eyebrow">Lash designer</div>
@@ -100,11 +136,40 @@ export default async function Home() {
                   <h3>{s.name}</h3>
                   <div className="tick" />
                   <p>{s.text}</p>
-                  <div className="photo" role="img" aria-label={`Exemplo de cílios Volume ${s.name}`}>
+                  <div className="photo" role="img" aria-label={`Exemplo ilustrativo de cílios, Volume ${s.name}`}>
                     <div className="img" style={{ backgroundImage: `url(/images/lash-${s.slug}.jpg)` }} />
+                    <span className="cap">Imagem ilustrativa</span>
                   </div>
                 </article>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="block" id="manutencao">
+          <div className="wrap maint">
+            <div className="shot" style={{ backgroundImage: "url(/images/manutencao.jpg)" }} role="img" aria-label="Profissional aplicando cílios em uma cliente" />
+            <div>
+              <div className="eyebrow">Manutenção</div>
+              <h2>Mantenha o olhar sempre perfeito</h2>
+              <p>
+                Com o tempo, os cílios naturais caem e o volume diminui. A manutenção repõe os fios que caíram e devolve o acabamento da
+                aplicação, sem precisar refazer tudo.
+              </p>
+              <ul>
+                <li>Reposição dos fios que caíram naturalmente</li>
+                <li>Mantém o estilo escolhido: Brasileiro, Egípcio, Glamour ou Luxo</li>
+                <li>Valor menor que o de uma nova aplicação</li>
+                <li>Pergunte pelo prazo ideal para o seu caso</li>
+              </ul>
+              {maint && (
+                <p className="from">
+                  Manutenção · {fmtMoney(maint.price_cents)} <span className="muted" style={{ fontSize: "0.9rem", fontFamily: "var(--sans)" }}>({DURATION(maint.duration_min)})</span>
+                </p>
+              )}
+              <Link href="/agendar?servico=lash-manutencao" className="btn btn-gold">
+                Agendar manutenção
+              </Link>
             </div>
           </div>
         </section>
@@ -153,22 +218,19 @@ export default async function Home() {
                   <span className="tag">{l.id === "angicos" ? "Atendimento fixo" : "Datas pré-definidas"}</span>
                   <h3>{l.id === "angicos" ? "Angicos" : "Natal"}</h3>
                   <p>{l.address}</p>
-                  {l.id === "natal" && (
-                    <>
-                      {natalDates.length > 0 ? (
-                        <>
-                          <p className="muted" style={{ margin: "0 0 6px" }}>Próximas datas em Natal:</p>
-                          <ul>
-                            {natalDates.map((d) => (
-                              <li key={d}>{fmtDateShort(d)}</li>
-                            ))}
-                          </ul>
-                        </>
-                      ) : (
-                        <p className="muted">As datas em Natal são divulgadas na agenda online e no Instagram.</p>
-                      )}
-                    </>
-                  )}
+                  {l.id === "natal" &&
+                    (natalDates.length > 0 ? (
+                      <>
+                        <p className="muted" style={{ margin: "0 0 6px" }}>Próximas datas em Natal:</p>
+                        <ul>
+                          {natalDates.map((d) => (
+                            <li key={d}>{fmtDateShort(d)}</li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : (
+                      <p className="muted">As datas em Natal são divulgadas na agenda online e no Instagram.</p>
+                    ))}
                   <a className="link" href={l.maps_url} target="_blank" rel="noopener noreferrer">
                     Ver no mapa
                   </a>
@@ -178,13 +240,29 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="block alt cta">
+        <section className="block alt" id="contato">
           <div className="wrap">
-            <h2>Pronta para se sentir ainda mais você?</h2>
-            <p>Escolha o serviço, o dia e o horário. A confirmação é imediata.</p>
-            <Link href="/agendar" className="btn btn-gold">
-              Agendar agora
-            </Link>
+            <div className="section-head">
+              <div className="eyebrow">Contato</div>
+              <h2>Fale com a gente</h2>
+            </div>
+            <div className="contact">
+              <a className="card" href={waLink("Olá! Gostaria de agendar um horário.")} target="_blank" rel="noopener noreferrer">
+                <span className="eyebrow">WhatsApp</span>
+                <strong>{SITE.whatsappDisplay}</strong>
+                <span className="muted">Agendamentos e dúvidas</span>
+              </a>
+              <a className="card" href={`https://instagram.com/${SITE.instagram}`} target="_blank" rel="noopener noreferrer">
+                <span className="eyebrow">Instagram</span>
+                <strong>@{SITE.instagram}</strong>
+                <span className="muted">Novidades e trabalhos</span>
+              </a>
+              <Link className="card" href="/agendar">
+                <span className="eyebrow">Agenda online</span>
+                <strong>Agendar agora</strong>
+                <span className="muted">Escolha serviço, dia e horário</span>
+              </Link>
+            </div>
           </div>
         </section>
       </main>
